@@ -1,5 +1,7 @@
 # Q3 2026 Revenue Dashboard: TheLook E-commerce
 
+**[View the live dashboard →](https://samdreal.github.io/thelook-q3-revenue-dashboard/)**
+
 An interactive revenue dashboard for Q3 2026 (July to September), built on Google's
 [TheLook e-commerce](https://console.cloud.google.com/marketplace/product/bigquery-public-data/thelook-ecommerce)
 public dataset in BigQuery. TheLook is a fictitious clothing store; the data is
@@ -62,10 +64,10 @@ filter work in a static page with no database behind it.
 
 ## View it
 
-Open `index.html` in a browser. It works straight from the file system.
+The dashboard is published with GitHub Pages at
+**https://samdreal.github.io/thelook-q3-revenue-dashboard/**.
 
-To publish it with GitHub Pages: in the repository's **Settings → Pages**, set the source
-to the branch and folder that contain `index.html`.
+To run it locally, open `index.html` in a browser. It works straight from the file system.
 
 ## Refresh the data
 
