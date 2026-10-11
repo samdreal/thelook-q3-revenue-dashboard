@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Q3 2026 Revenue by Region</title>
+<meta name="description" content="Q3 2026 revenue dashboard for TheLook e-commerce (BigQuery public dataset): revenue by region, top categories and month-to-month trend.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500&display=swap">
+<style>
+:root {
+  --font-anthropic-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-anthropic-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --color-bg: #f6f5f1;
+  --color-panel: #ffffff;
+  --color-fg: #1f2328;
+  --color-fg-muted: #636a73;
+  --color-border-line: #e2e0d8;
+  --color-ok: #1f7a4d;
+  --color-warn: #a86400;
+  --color-bad: #b4372f;
+  --series-1: #2f5fd0;
+  --series-2: #c2632a;
+  --series-3: #2e8a7a;
+  --series-4: #8a4fbf;
+  --series-5: #b8901a;
+  --series-6: #c0456f;
+  --cds-chart-muted: #c9cdd3;
+  --cds-chart-grid: #ecebe6;
+  --cds-chart-axis: #b9b7ae;
+  --cds-chart-status-critical: #c8473d;
+  --cds-surface-popover: #ffffff;
+  --cds-border: #dcdad2;
+  --cds-shadow-popover: 0 6px 20px rgba(20, 22, 26, 0.12);
+  --cds-text-secondary: #636a73;
+  --cds-gap-xs: 0.25rem;
+  --cds-gap-sm: 0.5rem;
+  --cds-gap-md: 1rem;
+  --cds-gap-lg: 1.5rem;
+  --cds-pad-xs: 0.25rem;
+  --cds-pad-sm: 0.5rem;
+  --cds-pad-lg: 1.25rem;
+  --cds-radius: 8px;
+  --cds-font-size-caption: 0.8125rem;
+  --cds-font-size-body: 0.9375rem;
+  --cds-font-size-heading: 1.0625rem;
+  --cds-font-size-title: 2rem;
+  --cds-font-weight-medium: 500;
+  --cds-dur-slow: 300ms;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #141518;
+    --color-panel: #1c1d21;
+    --color-fg: #e8e6e1;
+    --color-fg-muted: #9a9ea6;
+    --color-border-line: #2e3036;
+    --color-ok: #5cc28f;
+    --color-warn: #e0a548;
+    --color-bad: #ef7d73;
+    --series-1: #7ea2ff;
+    --series-2: #f0955a;
+    --series-3: #5cc2b0;
+    --series-4: #b78af0;
+    --series-5: #e0c050;
+    --series-6: #f07fa5;
+    --cds-chart-muted: #4a4e57;
+    --cds-chart-grid: #26282d;
+    --cds-chart-axis: #4a4d55;
+    --cds-chart-status-critical: #ef7d73;
+    --cds-surface-popover: #24262b;
+    --cds-border: #3a3d44;
+    --cds-shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.45);
+    --cds-text-secondary: #9a9ea6;
+    color-scheme: dark;
+  }
+}
+html, body { margin: 0; }
+body { background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); }
+.page { max-width: 1200px; margin-inline: auto; padding: 2rem 16px 3rem; }
+.dash-skeleton { color: transparent !important; position: relative; }
+.dash-skeleton::after { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: min(8rem, 80%); height: 0.8em; border-radius: 4px; background: var(--color-border-line); }
+.site-foot { margin-top: 2rem; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.site-foot a { color: inherit; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="data/data.js"></script>
+<script>
+// A small stand-in for the dashboard runtime the page code was written against:
+// dash.data(id) serves rows from the snapshot in data/data.js, filtered to the
+// picked region, and dash.onData(fn) redraws on filter changes and resizes.
+(function () {
+  const D = window.DASHBOARD_DATA || {};
+  let params = { country: null };
+  const listeners = [];
+  const scope = () => params.country || 'All regions';
+  const list = name => Array.isArray(D[name]) ? D[name] : [];
+  const sources = {
+    kpis: () => list('kpis').filter(r => r.scope === scope()),
+    by_country: () => list('by_country'),
+    monthly_region: () => list('monthly_region').filter(r => r.scope === scope()),
+    by_category: () => list('by_category').filter(r => r.scope === scope()),
+    monthly_totals: () => list('monthly').filter(r => r.scope === scope() && r.month >= '2026-07'),
+    monthly_trend: () => list('monthly').filter(r => r.scope === scope()).map(r => Object.assign({}, r, { in_q3: r.month >= '2026-07' }))
+  };
+  const run = () => listeners.forEach(fn => fn());
+  window.dash = {
+    data: id => {
+      if (!window.DASHBOARD_DATA) return { status: 'error', data: [], message: 'data/data.js did not load' };
+      return sources[id] ? { status: 'ok', data: sources[id]() } : { status: 'missing', data: [] };
+    },
+    params: () => Object.assign({}, params),
+    setParams: p => { params = Object.assign({}, params, p); run(); },
+    resetParams: () => { params = { country: null }; run(); },
+    onData: fn => { listeners.push(fn); fn(); },
+    colors: ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)', 'var(--series-5)', 'var(--series-6)']
+  };
+  let t;
+  window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(run, 120); });
+})();
+</script>
+</head>
+<body>
+<main class="page">
+<style>
+.q3 { font-family: var(--font-anthropic-sans); display: flex; flex-direction: column; gap: var(--cds-gap-lg); color: var(--color-fg); }
+.q3-head { display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
+.q3-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+.q3-takeaway { margin: 0; color: var(--color-fg-muted); font-size: var(--cds-font-size-body); max-width: 70ch; }
+.q3-takeaway span { color: var(--color-fg); }
+.q3-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: var(--cds-gap-md); }
+.q3-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; display: flex; flex-direction: column; gap: var(--cds-gap-sm); }
+.q3-label { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.q3-big { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.1; min-height: 1.1em; }
+.q3-delta { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+.q3-up { color: var(--color-ok); }
+.q3-down { color: var(--color-bad); }
+.q3-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: var(--cds-gap-md); }
+.q3-card h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+.q3-note { margin: 0; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.q3-chart { position: relative; min-height: 380px; }
+.q3-chart svg { display: block; overflow: visible; }
+.q3-chart text { fill: var(--color-fg-muted); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+.q3-chart .q3-name { fill: var(--color-fg); }
+.q3-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); min-height: 1.2em; }
+.q3-legend i { display: inline-block; width: 0.625rem; height: 0.625rem; border-radius: 2px; margin-right: 0.375rem; vertical-align: -1px; }
+.q3-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; white-space: nowrap; z-index: 2; }
+.q3-tip .q3-tip-head { color: var(--cds-text-secondary); }
+.q3-tablewrap { overflow-x: auto; }
+.q3-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; }
+.q3-table th { text-align: right; font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.q3-table td { text-align: right; padding: var(--cds-pad-xs) var(--cds-pad-sm); border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+.q3-table th:first-child, .q3-table td:first-child { text-align: left; }
+.q3-table tbody { min-height: 2rem; }
+.q3-failed { display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: inherit; height: 100%; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+.q3-failed i { width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--color-bad); }
+.q3 [data-dash-source-state=empty] { color: transparent; }
+.q3 [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+.q3-sub { margin: var(--cds-gap-sm) 0 0; font-size: var(--cds-font-size-caption); font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); }
+.q3-chart.q3-trend { min-height: 260px; }
+.q3-chart.q3-momchart { min-height: 140px; }
+.q3-months { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--cds-gap-md); }
+.q3-month { display: flex; flex-direction: column; gap: var(--cds-gap-xs); padding-block: var(--cds-pad-sm); border-top: 1px solid var(--color-border-line); }
+.q3-filters { display: flex; flex-wrap: wrap; align-items: center; gap: var(--cds-gap-sm) var(--cds-gap-md); }
+.q3-select { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-xs) var(--cds-pad-sm); min-width: 12rem; max-width: 100%; }
+.q3-clear { font: inherit; font-size: var(--cds-font-size-caption); color: var(--color-fg); background: transparent; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-xs) var(--cds-pad-sm); cursor: pointer; }
+.q3-select:focus-visible, .q3-clear:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+.q3-hint { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+.q3-chart rect.q3-bar { cursor: pointer; }
+.q3-table tbody tr { cursor: pointer; }
+.q3-table tbody tr:hover td { background: var(--color-bg); }
+.q3-table tbody tr.q3-sel td { font-weight: var(--cds-font-weight-medium); background: var(--color-bg); }
+@media (max-width: 640px) { .q3-hide-narrow { display: none; } .q3-hint { display: none; } }
+</style>
+
+<div class="q3">
+  <header class="q3-head">
+    <h1 class="q3-title" id="title">Q3 2026 revenue by region</h1>
+    <p class="q3-takeaway" id="takeaway">
+      <span class="dash-skeleton" data-source="by_country" data-field="country" data-row="0" data-fmt="text">—</span> brought in the most revenue from July to September, <span class="dash-skeleton" data-source="by_country" data-field="share" data-row="0" data-fmt="pct">—</span> of the total. Revenue overall changed <span class="dash-skeleton" data-source="kpis" data-field="revenue_change" data-row="0" data-fmt="change">—</span> on Q2.
+    </p>
+    <p class="q3-takeaway" id="takeaway-one" hidden>
+      <span class="q3-picked-name"></span> made up <span class="dash-skeleton q3-one" data-source="by_country" data-field="share" data-fmt="pct">—</span> of Q3 revenue. Its revenue changed <span class="dash-skeleton" data-source="kpis" data-field="revenue_change" data-row="0" data-fmt="change">—</span> on Q2.
+    </p>
+  </header>
+
+  <div class="q3-filters" id="filters">
+    <label class="q3-label" for="region-select">Region</label>
+    <select id="region-select" class="q3-select" data-source="by_country"></select>
+    <button type="button" id="region-clear" class="q3-clear" hidden>Show all regions</button>
+    <span class="q3-hint">Or click a country in the chart or table.</span>
+  </div>
+
+  <section class="q3-kpis" id="headline">
+    <div class="q3-card">
+      <div class="q3-label">Revenue · Jul–Sep 2026 · <span class="q3-scope">All regions</span></div>
+      <div class="q3-big dash-skeleton" data-source="kpis" data-field="revenue" data-row="0" data-fmt="money">—</div>
+      <div class="q3-delta"><span class="dash-skeleton" data-source="kpis" data-field="revenue_change" data-row="0" data-fmt="change">—</span> vs Q2</div>
+    </div>
+    <div class="q3-card">
+      <div class="q3-label">Orders · Jul–Sep 2026 · <span class="q3-scope">All regions</span></div>
+      <div class="q3-big dash-skeleton" data-source="kpis" data-field="orders" data-row="0" data-fmt="int">—</div>
+      <div class="q3-delta"><span class="dash-skeleton" data-source="kpis" data-field="orders_change" data-row="0" data-fmt="change">—</span> vs Q2</div>
+    </div>
+    <div class="q3-card">
+      <div class="q3-label">Customers who bought · Jul–Sep 2026 · <span class="q3-scope">All regions</span></div>
+      <div class="q3-big dash-skeleton" data-source="kpis" data-field="customers" data-row="0" data-fmt="int">—</div>
+      <div class="q3-delta"><span class="dash-skeleton" data-source="kpis" data-field="customers_change" data-row="0" data-fmt="change">—</span> vs Q2</div>
+    </div>
+    <div class="q3-card">
+      <div class="q3-label">Average order value · Jul–Sep 2026 · <span class="q3-scope">All regions</span></div>
+      <div class="q3-big dash-skeleton" data-source="kpis" data-field="avg_order_value" data-row="0" data-fmt="money2">—</div>
+      <div class="q3-delta"><span class="dash-skeleton" data-source="kpis" data-field="avg_order_value_change" data-row="0" data-fmt="change">—</span> vs Q2</div>
+    </div>
+  </section>
+
+  <section class="q3-card" id="month-to-month">
+    <h2>Month-to-month revenue</h2>
+    <p class="q3-note" id="mom-note">Each month against the month before (July against June 2026), all regions.</p>
+    <h3 class="q3-sub" id="trend-title">Revenue trend, last 12 months</h3>
+    <div class="q3-chart q3-trend dash-skeleton" id="trend-chart" data-source="monthly_trend"></div>
+    <h3 class="q3-sub">Change from the month before</h3>
+    <div class="q3-chart q3-momchart dash-skeleton" id="mom-chart" data-source="monthly_trend"></div>
+    <div class="q3-months">
+      <div class="q3-month">
+        <div class="q3-label">July 2026</div>
+        <div class="q3-big dash-skeleton" data-source="monthly_totals" data-field="revenue" data-where="month=2026-07" data-fmt="money">—</div>
+        <div class="q3-delta"><span class="dash-skeleton" data-source="monthly_totals" data-field="revenue_mom" data-where="month=2026-07" data-fmt="change">—</span> (<span class="dash-skeleton" data-source="monthly_totals" data-field="revenue_diff" data-where="month=2026-07" data-fmt="signedMoney">—</span>) vs June</div>
+      </div>
+      <div class="q3-month">
+        <div class="q3-label">August 2026</div>
+        <div class="q3-big dash-skeleton" data-source="monthly_totals" data-field="revenue" data-where="month=2026-08" data-fmt="money">—</div>
+        <div class="q3-delta"><span class="dash-skeleton" data-source="monthly_totals" data-field="revenue_mom" data-where="month=2026-08" data-fmt="change">—</span> (<span class="dash-skeleton" data-source="monthly_totals" data-field="revenue_diff" data-where="month=2026-08" data-fmt="signedMoney">—</span>) vs July</div>
+      </div>
+      <div class="q3-month">
+        <div class="q3-label">September 2026</div>
+        <div class="q3-big dash-skeleton" data-source="monthly_totals" data-field="revenue" data-where="month=2026-09" data-fmt="money">—</div>
+        <div class="q3-delta"><span class="dash-skeleton" data-source="monthly_totals" data-field="revenue_mom" data-where="month=2026-09" data-fmt="change">—</span> (<span class="dash-skeleton" data-source="monthly_totals" data-field="revenue_diff" data-where="month=2026-09" data-fmt="signedMoney">—</span>) vs August</div>
+      </div>
+    </div>
+    <div class="q3-tablewrap">
+      <table class="q3-table" data-source="monthly_totals" data-row-key="month">
+        <thead><tr>
+          <th data-field="month">Month</th>
+          <th data-field="revenue">Revenue</th>
+          <th data-field="revenue_mom">Revenue change</th>
+          <th data-field="orders">Orders</th>
+          <th data-field="orders_mom" class="q3-hide-narrow">Orders change</th>
+          <th data-field="customers" class="q3-hide-narrow">Customers</th>
+          <th data-field="avg_order_value">Avg order value</th>
+          <th data-field="share_of_q3" class="q3-hide-narrow">Share of Q3</th>
+        </tr></thead>
+        <tbody id="mom-rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="q3-grid">
+    <div class="q3-card" id="by-country">
+      <h2>Revenue by country</h2>
+      <p class="q3-note">Q3 2026, with each country's share of the total. Country is the customer's home country.</p>
+      <div class="q3-chart dash-skeleton" id="country-chart" data-source="by_country"></div>
+    </div>
+    <div class="q3-card" id="by-month">
+      <h2>Monthly revenue by region</h2>
+      <p class="q3-note" id="month-note">The five largest countries, with the rest grouped.</p>
+      <div class="q3-legend" id="month-legend" data-source="monthly_region"></div>
+      <div class="q3-chart dash-skeleton" id="month-chart" data-source="monthly_region"></div>
+    </div>
+  </section>
+
+  <section class="q3-card" id="by-category">
+    <h2>Top 10 product categories by revenue</h2>
+    <p class="q3-note" id="category-note">Q3 2026, all regions. Share is of total Q3 revenue across every category; change is against Q2.</p>
+    <div class="q3-chart q3-chart-cat dash-skeleton" id="category-chart" data-source="by_category"></div>
+  </section>
+
+  <section class="q3-card" id="country-table">
+    <h2>Country detail</h2>
+    <p class="q3-note">Revenue counts items not cancelled or returned, by order date. Q2 is April to June 2026.</p>
+    <div class="q3-tablewrap">
+      <table class="q3-table" data-source="by_country" data-row-key="country">
+        <thead><tr>
+          <th data-field="country">Country</th>
+          <th data-field="revenue">Q3 revenue</th>
+          <th data-field="orders">Orders</th>
+          <th data-field="share">Share</th>
+          <th data-field="revenue_q2" class="q3-hide-narrow">Q2 revenue</th>
+          <th data-field="change_vs_q2">Change vs Q2</th>
+        </tr></thead>
+        <tbody id="country-rows"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 2 });
+  const fmt = {
+    money: v => '$' + compact.format(v),
+    money2: d3.format('$,.2f'),
+    moneyFull: d3.format('$,.0f'),
+    int: d3.format(','),
+    pct: d3.format('.1%'),
+    change: v => (v > 0 ? '+' : '') + d3.format('.1%')(v),
+    text: v => String(v),
+    signedMoney: v => (v >= 0 ? '+' : '−') + '$' + compact.format(Math.abs(v))
+  };
+  const num = v => (v === null || v === undefined || v === '') ? null : Number(v);
+
+  function failLine(el) {
+    el.textContent = '';
+    const d = document.createElement('div');
+    d.className = 'q3-failed';
+    d.appendChild(document.createElement('i'));
+    d.appendChild(document.createTextNode('Failed to load'));
+    el.appendChild(d);
+  }
+
+  function fillMarks(id) {
+    const res = dash.data(id);
+    document.querySelectorAll(`.q3 [data-source="${id}"][data-field]:is([data-row], [data-where])`).forEach(el => {
+      el.classList.remove('q3-up', 'q3-down');
+      if (res.status === 'loading') { el.classList.add('dash-skeleton'); el.textContent = '—'; return; }
+      el.classList.remove('dash-skeleton');
+      let row = null;
+      if (res.status === 'ok') {
+        if (el.dataset.where) {
+          const [col, val] = el.dataset.where.split('=').map(decodeURIComponent);
+          row = res.data.find(r => String(r[col]) === val) || null;
+        } else {
+          row = res.data[Number(el.dataset.row)];
+        }
+      }
+      const raw = row ? row[el.dataset.field] : null;
+      const kind = el.dataset.fmt;
+      if (raw === null || raw === undefined) { el.textContent = '—'; return; }
+      const v = kind === 'text' ? raw : num(raw);
+      el.textContent = fmt[kind](v);
+      if (kind === 'change') el.classList.add(v >= 0 ? 'q3-up' : 'q3-down');
+    });
+  }
+
+  function measure(svg, texts) {
+    const t = svg.append('text').attr('class', 'q3-name');
+    let w = 0;
+    texts.forEach(s => { t.text(s); w = Math.max(w, t.node().getComputedTextLength()); });
+    t.remove();
+    return w;
+  }
+
+  function tipFor(box) {
+    let tip = box.querySelector('.q3-tip');
+    if (!tip) { tip = document.createElement('div'); tip.className = 'q3-tip'; tip.hidden = true; box.appendChild(tip); }
+    return tip;
+  }
+  function showTip(box, tip, ev, head, lines) {
+    tip.textContent = '';
+    const h = document.createElement('div'); h.className = 'q3-tip-head'; h.textContent = head; tip.appendChild(h);
+    lines.forEach(([color, label, value]) => {
+      const line = document.createElement('div');
+      if (color) { const sw = document.createElement('i'); sw.style.cssText = `display:inline-block;width:.5rem;height:.5rem;border-radius:2px;margin-right:.375rem;background:${color}`; line.appendChild(sw); }
+      line.appendChild(document.createTextNode(label ? `${label}: ${value}` : value));
+      tip.appendChild(line);
+    });
+    tip.hidden = false;
+    const r = box.getBoundingClientRect();
+    let x = ev.clientX - r.left + 12, y = ev.clientY - r.top + 12;
+    if (x + tip.offsetWidth > box.clientWidth) x = Math.max(0, ev.clientX - r.left - tip.offsetWidth - 12);
+    if (y + tip.offsetHeight > box.clientHeight) y = Math.max(0, ev.clientY - r.top - tip.offsetHeight - 12);
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+
+  const picked = () => dash.params().country || null;
+  const pick = c => dash.setParams({ country: c || null });
+
+  const select = document.getElementById('region-select');
+  const clearBtn = document.getElementById('region-clear');
+  select.addEventListener('change', () => pick(select.value));
+  clearBtn.addEventListener('click', () => pick(null));
+
+  function drawFilter() {
+    const c = picked();
+    const res = dash.data('by_country');
+    const names = res.status === 'ok' ? res.data.map(r => r.country) : [];
+    if (c && !names.includes(c)) names.push(c);
+    select.replaceChildren(new Option('All regions', ''), ...names.map(n => new Option(n, n)));
+    select.value = c || '';
+    clearBtn.hidden = !c;
+    document.querySelectorAll('.q3-scope').forEach(el => { el.textContent = c || 'All regions'; });
+    document.getElementById('takeaway').hidden = !!c;
+    const one = document.getElementById('takeaway-one');
+    one.hidden = !c;
+    one.querySelector('.q3-picked-name').textContent = c || '';
+    const shareEl = one.querySelector('.q3-one');
+    if (c) shareEl.setAttribute('data-where', 'country=' + encodeURIComponent(c));
+    else shareEl.removeAttribute('data-where');
+    document.getElementById('mom-note').textContent =
+      `October 2025 to September 2026 for context, with Q3 shaded; each month is compared with the month before. ${c || 'All regions'}.`;
+    document.getElementById('category-note').textContent =
+      `Q3 2026, ${c || 'all regions'}. Share is of total Q3 revenue across every category; change is against Q2.`;
+    document.getElementById('month-note').textContent = c
+      ? `Revenue in ${c} for each month of Q3.`
+      : 'The five largest countries, with the rest grouped.';
+  }
+
+  function drawCountries() {
+    const box = document.getElementById('country-chart');
+    const res = dash.data('by_country');
+    if (res.status === 'loading') { box.textContent = ''; box.classList.add('dash-skeleton'); return; }
+    box.classList.remove('dash-skeleton');
+    if (res.status !== 'ok') { failLine(box); return; }
+    box.textContent = '';
+    const rows = res.data.map(r => ({ country: r.country, revenue: num(r.revenue), share: num(r.share), orders: num(r.orders) }))
+      .filter(r => r.revenue > 0).sort((a, b) => b.revenue - a.revenue);
+    const W = Math.max(280, box.clientWidth);
+    const rowH = 26;
+    const H = Math.max(380, rows.length * rowH + 8);
+    box.style.minHeight = H + 'px';
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const left = measure(svg, rows.map(r => r.country)) + 10;
+    const valueText = r => `${fmt.money(r.revenue)} · ${fmt.pct(r.share)}`;
+    const right = measure(svg, rows.map(valueText)) + 10;
+    const x = d3.scaleLinear([0, d3.max(rows, r => r.revenue) || 1], [left, Math.max(left + 20, W - right)]);
+    const y = d3.scaleBand(rows.map(r => r.country), [4, rows.length * rowH + 4]).padding(0.28);
+    const tip = tipFor(box);
+    const g = svg.selectAll('g.row').data(rows).join('g').attr('class', 'row');
+    g.append('text').attr('class', 'q3-name').attr('x', left - 10).attr('y', r => y(r.country) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').text(r => r.country);
+    g.append('rect').attr('x', left).attr('y', r => y(r.country)).attr('height', y.bandwidth())
+      .attr('width', r => Math.max(2, x(r.revenue) - left)).attr('rx', 4).attr('class', 'q3-bar')
+      .style('fill', (r, i) => (picked() ? r.country === picked() : i === 0) ? dash.colors[0] : 'var(--cds-chart-muted)')
+      .on('click', (ev, r) => pick(r.country === picked() ? null : r.country))
+      .on('mousemove', (ev, r) => showTip(box, tip, ev, r.country, [[null, 'Revenue', fmt.moneyFull(r.revenue)], [null, 'Share', fmt.pct(r.share)], [null, 'Orders', fmt.int(r.orders)]]))
+      .on('mouseleave', () => { tip.hidden = true; });
+    g.append('text').attr('x', r => x(r.revenue) + 6).attr('y', r => y(r.country) + y.bandwidth() / 2).attr('dy', '0.35em').text(valueText);
+    box.appendChild(tip);
+  }
+
+  function drawCategories() {
+    const box = document.getElementById('category-chart');
+    const res = dash.data('by_category');
+    if (res.status === 'loading') { box.textContent = ''; box.classList.add('dash-skeleton'); return; }
+    box.classList.remove('dash-skeleton');
+    if (res.status !== 'ok') { failLine(box); return; }
+    box.textContent = '';
+    const rows = res.data.map(r => ({ category: r.category, revenue: num(r.revenue), orders: num(r.orders), share: num(r.share), change: num(r.change_vs_q2) }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const W = Math.max(280, box.clientWidth);
+    const rowH = 30;
+    const H = Math.max(rowH * 10 + 8, rows.length * rowH + 8);
+    box.style.minHeight = H + 'px';
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const left = Math.min(W * 0.45, measure(svg, rows.map(r => r.category)) + 10);
+    const valueText = r => `${fmt.money(r.revenue)} · ${fmt.pct(r.share)}`;
+    const right = measure(svg, rows.map(valueText)) + 10;
+    const x = d3.scaleLinear([0, d3.max(rows, r => r.revenue) || 1], [left, Math.max(left + 20, W - right)]);
+    const y = d3.scaleBand(rows.map(r => r.category), [4, rows.length * rowH + 4]).padding(0.3);
+    const tip = tipFor(box);
+    const g = svg.selectAll('g.row').data(rows).join('g').attr('class', 'row');
+    g.append('text').attr('class', 'q3-name').attr('x', left - 10).attr('y', r => y(r.category) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end').text(r => r.category);
+    g.append('rect').attr('x', left).attr('y', r => y(r.category)).attr('height', y.bandwidth())
+      .attr('width', r => Math.max(2, x(r.revenue) - left)).attr('rx', 4)
+      .style('fill', dash.colors[1])
+      .on('mousemove', (ev, r) => showTip(box, tip, ev, r.category, [
+        [null, 'Revenue', fmt.moneyFull(r.revenue)], [null, 'Share', fmt.pct(r.share)],
+        [null, 'Orders', fmt.int(r.orders)], [null, 'Change vs Q2', r.change === null ? '—' : fmt.change(r.change)]]))
+      .on('mouseleave', () => { tip.hidden = true; });
+    g.append('text').attr('x', r => x(r.revenue) + 6).attr('y', r => y(r.category) + y.bandwidth() / 2).attr('dy', '0.35em').text(valueText);
+    box.appendChild(tip);
+  }
+
+  function drawMonthly() {
+    const box = document.getElementById('month-chart');
+    const legend = document.getElementById('month-legend');
+    const res = dash.data('monthly_region');
+    legend.textContent = '';
+    if (res.status === 'loading') { box.textContent = ''; box.classList.add('dash-skeleton'); return; }
+    box.classList.remove('dash-skeleton');
+    if (res.status !== 'ok') { failLine(box); return; }
+    box.textContent = '';
+    const rows = res.data.map(r => ({ month: r.month, region: r.region, revenue: num(r.revenue) }));
+    const months = Array.from(new Set(rows.map(r => r.month))).sort();
+    const totals = d3.rollup(rows, v => d3.sum(v, r => r.revenue), r => r.region);
+    const regions = Array.from(totals.keys()).filter(k => k !== 'All other').sort((a, b) => totals.get(b) - totals.get(a));
+    if (totals.has('All other')) regions.push('All other');
+    const color = reg => reg === 'All other' ? 'var(--cds-chart-muted)' : dash.colors[regions.indexOf(reg) % dash.colors.length];
+    regions.forEach(reg => {
+      const s = document.createElement('span'); const i = document.createElement('i');
+      i.style.background = color(reg); s.appendChild(i); s.appendChild(document.createTextNode(reg)); legend.appendChild(s);
+    });
+    const W = Math.max(280, box.clientWidth), H = 380;
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    const yMax = d3.max(rows, r => r.revenue) || 1;
+    const y = d3.scaleLinear([0, yMax], [H - 28, 10]).nice();
+    const ticks = y.ticks(5);
+    const left = measure(svg, ticks.map(fmt.money)) + 10;
+    const x0 = d3.scaleBand(months, [left, W]).paddingInner(0.22).paddingOuter(0.08);
+    const x1 = d3.scaleBand(regions, [0, x0.bandwidth()]).padding(0.12);
+    svg.append('g').selectAll('line').data(ticks).join('line')
+      .attr('x1', left).attr('x2', W).attr('y1', d => y(d)).attr('y2', d => y(d))
+      .style('stroke', d => d === 0 ? 'var(--cds-chart-axis)' : 'var(--cds-chart-grid)').attr('stroke-width', 1);
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', left - 8).attr('y', d => y(d)).attr('dy', '0.35em').attr('text-anchor', 'end').text(fmt.money);
+    const monthName = m => d3.utcFormat('%B')(new Date(m + '-01T00:00:00Z'));
+    svg.append('g').selectAll('text').data(months).join('text')
+      .attr('x', m => x0(m) + x0.bandwidth() / 2).attr('y', H - 8).attr('text-anchor', 'middle').text(monthName);
+    const tip = tipFor(box);
+    svg.append('g').selectAll('rect').data(rows).join('rect')
+      .attr('x', r => x0(r.month) + x1(r.region)).attr('width', x1.bandwidth())
+      .attr('y', r => y(r.revenue)).attr('height', r => Math.max(0, y(0) - y(r.revenue))).attr('rx', 3)
+      .style('fill', r => color(r.region))
+      .on('mousemove', (ev, r) => {
+        const inMonth = regions.map(reg => rows.find(o => o.month === r.month && o.region === reg)).filter(Boolean);
+        showTip(box, tip, ev, monthName(r.month) + ' 2026', inMonth.map(o => [color(o.region), o.region, fmt.moneyFull(o.revenue)]));
+      })
+      .on('mouseleave', () => { tip.hidden = true; });
+    box.appendChild(tip);
+  }
+
+  function drawTable() {
+    const body = document.getElementById('country-rows');
+    const res = dash.data('by_country');
+    body.textContent = '';
+    if (res.status !== 'ok') return;
+    res.data.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.country;
+      if (r.country === picked()) tr.className = 'q3-sel';
+      const ch = num(r.change_vs_q2);
+      const cells = [
+        [r.country, ''],
+        [fmt.moneyFull(num(r.revenue)), ''],
+        [fmt.int(num(r.orders)), ''],
+        [fmt.pct(num(r.share)), ''],
+        [fmt.moneyFull(num(r.revenue_q2)), 'q3-hide-narrow'],
+        [ch === null ? '—' : fmt.change(ch), ch === null ? '' : (ch >= 0 ? 'q3-up' : 'q3-down')]
+      ];
+      cells.forEach(([t, cls]) => { const td = document.createElement('td'); td.textContent = t; if (cls) td.className = cls; tr.appendChild(td); });
+      body.appendChild(tr);
+    });
+  }
+
+  function trendFrame(box, H) {
+    const res = dash.data('monthly_trend');
+    if (res.status === 'loading') { box.textContent = ''; box.classList.add('dash-skeleton'); return null; }
+    box.classList.remove('dash-skeleton');
+    if (res.status !== 'ok') { failLine(box); return null; }
+    box.textContent = '';
+    const rows = res.data.map(r => ({ month: r.month, date: new Date(r.month + '-01T00:00:00Z'), revenue: num(r.revenue), mom: num(r.revenue_mom), q3: r.in_q3 === true || r.in_q3 === 'true' }));
+    const W = Math.max(280, box.clientWidth);
+    const svg = d3.select(box).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+    return { rows, W, svg };
+  }
+  const shortMonth = d => d3.utcFormat(d.getUTCMonth() === 0 ? "%b '%y" : '%b')(d);
+
+  function drawTrend() {
+    const box = document.getElementById('trend-chart');
+    const H = 260;
+    const f = trendFrame(box, H);
+    if (!f) return;
+    const { rows, W, svg } = f;
+    const y = d3.scaleLinear([0, d3.max(rows, r => r.revenue) || 1], [H - 26, 18]).nice();
+    const ticks = y.ticks(4);
+    const left = measure(svg, ticks.map(fmt.money)) + 10;
+    const last = rows[rows.length - 1];
+    const endLabel = last ? fmt.money(last.revenue) : '';
+    const right = measure(svg, [endLabel]) + 14;
+    const x = d3.scalePoint(rows.map(r => r.month), [left + 8, W - right]);
+    const q3 = rows.filter(r => r.q3);
+    if (q3.length) {
+      const step = x.step();
+      const x0 = x(q3[0].month) - step / 2, x1 = x(q3[q3.length - 1].month) + Math.min(step / 2, right - 4);
+      svg.append('rect').attr('x', x0).attr('y', 4).attr('width', x1 - x0).attr('height', H - 30).attr('rx', 4).style('fill', 'var(--color-bg)');
+      svg.append('text').attr('x', x0 + 6).attr('y', 14).text('Q3');
+    }
+    svg.append('g').selectAll('line').data(ticks).join('line')
+      .attr('x1', left).attr('x2', W).attr('y1', d => y(d)).attr('y2', d => y(d))
+      .style('stroke', d => d === 0 ? 'var(--cds-chart-axis)' : 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', left - 8).attr('y', d => y(d)).attr('dy', '0.35em').attr('text-anchor', 'end').text(fmt.money);
+    const every = W < 520 ? 2 : 1;
+    svg.append('g').selectAll('text').data(rows.filter((r, i) => (rows.length - 1 - i) % every === 0)).join('text')
+      .attr('x', r => x(r.month)).attr('y', H - 6).attr('text-anchor', 'middle').text(r => shortMonth(r.date));
+    const gid = 'q3-trend-fade';
+    const grad = svg.append('defs').append('linearGradient').attr('id', gid).attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+    [[0, .26], [.25, .16], [.5, .08], [.75, .03], [1, 0]].forEach(([o, a]) => grad.append('stop').attr('offset', o).attr('style', `stop-color:${dash.colors[0]};stop-opacity:${a}`));
+    svg.append('path').datum(rows).attr('d', d3.area().x(r => x(r.month)).y0(y(0)).y1(r => y(r.revenue))).style('fill', `url(#${gid})`);
+    svg.append('path').datum(rows).attr('d', d3.line().x(r => x(r.month)).y(r => y(r.revenue)))
+      .style('fill', 'none').style('stroke', dash.colors[0]).attr('stroke-width', 2).attr('stroke-linecap', 'round').attr('stroke-linejoin', 'round');
+    if (last) {
+      svg.append('circle').attr('cx', x(last.month)).attr('cy', y(last.revenue)).attr('r', 4).style('fill', dash.colors[0]);
+      svg.append('text').attr('class', 'q3-name').attr('x', x(last.month) + 8).attr('y', y(last.revenue)).attr('dy', '0.35em').text(endLabel);
+    }
+    const tip = tipFor(box);
+    const dot = svg.append('circle').attr('r', 4).style('fill', dash.colors[0]).attr('visibility', 'hidden');
+    svg.append('rect').attr('x', left).attr('y', 0).attr('width', W - left).attr('height', H).style('fill', 'transparent')
+      .on('mousemove', ev => {
+        const [mx] = d3.pointer(ev);
+        const r = rows.reduce((a, b) => Math.abs(x(b.month) - mx) < Math.abs(x(a.month) - mx) ? b : a, rows[0]);
+        if (!r) return;
+        dot.attr('cx', x(r.month)).attr('cy', y(r.revenue)).attr('visibility', 'visible');
+        showTip(box, tip, ev, d3.utcFormat('%B %Y')(r.date), [[null, 'Revenue', fmt.moneyFull(r.revenue)], [null, 'vs month before', r.mom === null ? '—' : fmt.change(r.mom)]]);
+      })
+      .on('mouseleave', () => { tip.hidden = true; dot.attr('visibility', 'hidden'); });
+    box.appendChild(tip);
+  }
+
+  function drawMomBars() {
+    const box = document.getElementById('mom-chart');
+    const H = 140;
+    const f = trendFrame(box, H);
+    if (!f) return;
+    const { W, svg } = f;
+    const rows = f.rows.filter(r => r.mom !== null);
+    const ext = d3.extent(rows, r => r.mom);
+    const y = d3.scaleLinear([Math.min(0, ext[0] || 0), Math.max(0, ext[1] || 0)], [H - 26, 16]).nice();
+    const ticks = y.ticks(3);
+    const left = measure(svg, ticks.map(fmt.change)) + 10;
+    const x = d3.scaleBand(rows.map(r => r.month), [left, W]).padding(0.3);
+    svg.append('g').selectAll('line').data(ticks).join('line')
+      .attr('x1', left).attr('x2', W).attr('y1', d => y(d)).attr('y2', d => y(d))
+      .style('stroke', d => d === 0 ? 'var(--cds-chart-axis)' : 'var(--cds-chart-grid)');
+    svg.append('g').selectAll('text').data(ticks).join('text')
+      .attr('x', left - 8).attr('y', d => y(d)).attr('dy', '0.35em').attr('text-anchor', 'end').text(fmt.change);
+    const every = W < 520 ? 2 : 1;
+    svg.append('g').selectAll('text').data(rows.filter((r, i) => (rows.length - 1 - i) % every === 0)).join('text')
+      .attr('x', r => x(r.month) + x.bandwidth() / 2).attr('y', H - 6).attr('text-anchor', 'middle').text(r => shortMonth(r.date));
+    const tip = tipFor(box);
+    svg.append('g').selectAll('rect').data(rows).join('rect')
+      .attr('x', r => x(r.month)).attr('width', x.bandwidth())
+      .attr('y', r => y(Math.max(0, r.mom))).attr('height', r => Math.abs(y(r.mom) - y(0))).attr('rx', 3)
+      .style('fill', r => r.mom < 0 ? 'var(--cds-chart-status-critical)' : (r.q3 ? dash.colors[0] : 'var(--cds-chart-muted)'))
+      .on('mousemove', (ev, r) => showTip(box, tip, ev, d3.utcFormat('%B %Y')(r.date), [[null, 'vs month before', fmt.change(r.mom)], [null, 'Revenue', fmt.moneyFull(r.revenue)]]))
+      .on('mouseleave', () => { tip.hidden = true; });
+    if (x.bandwidth() > 26) {
+      svg.append('g').selectAll('text').data(rows).join('text')
+        .attr('x', r => x(r.month) + x.bandwidth() / 2).attr('y', r => r.mom >= 0 ? y(r.mom) - 4 : y(r.mom) + 12)
+        .attr('text-anchor', 'middle').text(r => d3.format('+.0%')(r.mom));
+    }
+    box.appendChild(tip);
+  }
+
+  function drawMomTable() {
+    const body = document.getElementById('mom-rows');
+    const res = dash.data('monthly_totals');
+    body.textContent = '';
+    if (res.status !== 'ok') return;
+    const monthName = m => d3.utcFormat('%B %Y')(new Date(m + '-01T00:00:00Z'));
+    res.data.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.dataset.key = r.month;
+      tr.style.cursor = 'default';
+      const rc = num(r.revenue_mom), oc = num(r.orders_mom);
+      const cls = v => v === null ? '' : (v >= 0 ? 'q3-up' : 'q3-down');
+      [
+        [monthName(r.month), ''],
+        [fmt.moneyFull(num(r.revenue)), ''],
+        [rc === null ? '—' : fmt.change(rc), cls(rc)],
+        [fmt.int(num(r.orders)), ''],
+        [oc === null ? '—' : fmt.change(oc), 'q3-hide-narrow ' + cls(oc)],
+        [fmt.int(num(r.customers)), 'q3-hide-narrow'],
+        [fmt.money2(num(r.avg_order_value)), ''],
+        [fmt.pct(num(r.share_of_q3)), 'q3-hide-narrow']
+      ].forEach(([t, c]) => { const td = document.createElement('td'); td.textContent = t; if (c.trim()) td.className = c.trim(); tr.appendChild(td); });
+      body.appendChild(tr);
+    });
+  }
+
+  document.getElementById('country-rows').addEventListener('click', ev => {
+    const tr = ev.target.closest('tr[data-key]');
+    if (tr) pick(tr.dataset.key === picked() ? null : tr.dataset.key);
+  });
+
+  dash.onData(() => {
+    drawFilter();
+    fillMarks('kpis');
+    fillMarks('by_country');
+    fillMarks('monthly_totals');
+    drawMomTable();
+    drawTrend();
+    drawMomBars();
+    drawCountries();
+    drawMonthly();
+    drawCategories();
+    drawTable();
+  });
+})();
+</script>
+
+<footer class="site-foot">
+  <span>Data: <a href="https://console.cloud.google.com/marketplace/product/bigquery-public-data/thelook-ecommerce">TheLook e-commerce</a>, a fictitious BigQuery public dataset.</span>
+  <span id="snapshot"></span>
+</footer>
+</main>
+<script>
+(function () {
+  const d = window.DASHBOARD_DATA;
+  const el = document.getElementById('snapshot');
+  el.textContent = d && d.generated_at ? 'Snapshot taken ' + d.generated_at.slice(0, 10) : 'Snapshot missing: run scripts/refresh_data.py';
+})();
+</script>
+</body>
+</html>
