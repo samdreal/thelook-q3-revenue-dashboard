@@ -14,7 +14,7 @@ credentials. A Python script re-runs the SQL to refresh the snapshot.
 ## What it shows
 
 - **Headline figures:** Q3 revenue, orders, customers who bought and average order value, each with its change from Q2 2026.
-- **Region filter:** pick a country from the drop-down, or click a country's bar or table row. Every section except the country comparison updates to that country.
+- **Region filter:** pick a country from the drop-down, or click a country's bar or table row. Every section updates to that country, except the revenue-by-country chart and the country table, which keep every country for comparison and highlight the one picked.
 - **Month-to-month revenue:** a 12-month revenue trend (October 2025 to September 2026) with Q3 shaded, the month-over-month change as bars, and a July / August / September breakdown with orders, customers and average order value.
 - **Revenue by country:** every country with Q3 sales, with its share of the total.
 - **Monthly revenue by region:** the five largest countries plus "All other", per month.
@@ -31,7 +31,7 @@ credentials. A Python script re-runs the SQL to refresh the snapshot.
 | Average order value | $86.23 | +0.2% |
 
 - China (33.9%), the United States (22.9%) and Brasil (14.2%) bring in over 70% of revenue.
-- Revenue grew every month of Q3, accelerating to +25.1% in September. The growth came from more orders, not bigger ones.
+- Revenue grew every month of Q3 (+11.4% in July, +10.5% in August, +25.1% in September). The growth came mostly from more orders; average order value barely moved.
 - Outerwear & Coats and Jeans are the top categories, at about 12% of revenue each.
 
 ## Metric definitions
@@ -67,12 +67,14 @@ filter work in a static page with no database behind it.
 The dashboard is published with GitHub Pages at
 **https://samdreal.github.io/thelook-q3-revenue-dashboard/**.
 
-To run it locally, open `index.html` in a browser. It works straight from the file system.
+To run it locally, open `index.html` in a browser. It works straight from the file system,
+but needs an internet connection to load d3 and the fonts.
 
 ## Refresh the data
 
-You need a Google Cloud project with the BigQuery API enabled. The free BigQuery sandbox works.
-Each query scans about 50 MB, well inside the free tier.
+You need Python 3, the [Google Cloud CLI](https://cloud.google.com/sdk/docs/install)
+(for the `gcloud` sign-in below) and a Google Cloud project with the BigQuery API enabled.
+The free BigQuery sandbox works. Each query scans about 50 MB, well inside the free tier.
 
 ```bash
 pip install -r requirements.txt
@@ -83,8 +85,10 @@ python scripts/refresh_data.py --project YOUR_GCP_PROJECT_ID
 Then commit the updated `data/data.js`.
 
 The quarter is fixed in the SQL (Q3 2026, compared with Q2 2026, and a trend
-from October 2025). To report on another quarter, change the dates in the `sql/`
-files and the `'2026-07'` month checks in `index.html`.
+from October 2025). Refreshing updates the numbers for that same quarter. To report on
+another quarter, change the dates in the `sql/` files, and in `index.html` the
+`'2026-07'` month checks, the month tiles' `month=2026-…` values and the labels that
+name Q3 2026 or its months.
 
 ## Built with
 
